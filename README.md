@@ -52,3 +52,25 @@ Datasets for AI-driven Log Analytics*, ISSRE 2023.
 
 Downloaded data is excluded from Git. Retain the dataset’s original
 license and attribution notices when using or distributing it.
+
+## Block lookup: before and after GIN indexing
+
+- Dataset: 11,175,629 HDFS log events
+- Block ID: blk_38865049064139660
+- Matching events: 38
+- Query: array containment, ordered by timestamp and ID, limit 101
+- Measurement: PostgreSQL EXPLAIN (ANALYZE, BUFFERS)
+
+| Run | Before index (ms) | After index (ms) |
+|---|---:|---:|
+| 1 | 12995.295 | 1.410 |
+| 2 | 12082.617 | 1.488 |
+| 3 | 2821.840 | 0.307 |
+| Median | 12082.617 | 1.410 |
+
+The query plan changed from a parallel sequential scan to a GIN-backed
+bitmap scan. Both returned 38 events.
+
+These are three sequential runs for one block ID, without resetting
+caches. They measure database execution time, not API or agent latency.
+Broader benchmarks are needed before generalizing the improvement.
