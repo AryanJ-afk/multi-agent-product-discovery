@@ -1,13 +1,20 @@
+import argparse
 from pathlib import Path
+from time import perf_counter
 
 from app.db import get_connection
 from app.parser import parse_line
 
 
-def ingest_logs(path):
-    schema_path = Path(__file__).with_name("schema.sql")
+def ingest_logs(path, replace_source=None):
     source_file = path.name
+    schema_path = Path(__file__).with_name("schema.sql")
+
+    if replace_source == source_file:
+        raise ValueError("Replacement source must differ from the new source")
+
     count = 0
+    start = perf_counter()
 
     with get_connection() as connection:
         connection.execute(schema_path.read_text(encoding="utf-8"))
@@ -20,6 +27,13 @@ def ingest_logs(path):
         if existing:
             print(f"{source_file} is already imported. Skipping.")
             return
+
+        if replace_source:
+            cursor = connection.execute(
+                "DELETE FROM log_events WHERE source_file = %s",
+                (replace_source,),
+            )
+            print(f"Replacing {cursor.rowcount:,} rows from {replace_source}")
 
         with connection.cursor() as cursor:
             with cursor.copy("""
@@ -57,8 +71,20 @@ def ingest_logs(path):
 
                         count += 1
 
-    print(f"Imported {count} events from {source_file}")
+                        if count % 100_000 == 0:
+                            print(f"Sent {count:,} events", flush=True)
+
+    elapsed = perf_counter() - start
+
+    print(f"Imported {count:,} events from {source_file}")
+    print(f"Elapsed time: {elapsed:.2f} seconds")
+    print(f"Ingestion speed: {count / elapsed:,.0f} events/second")
 
 
 if __name__ == "__main__":
-    ingest_logs(Path("data/raw/HDFS_2k.log"))
+    parser = argparse.ArgumentParser(description="Import HDFS logs")
+    parser.add_argument("path", type=Path)
+    parser.add_argument("--replace-source")
+    args = parser.parse_args()
+
+    ingest_logs(args.path, args.replace_source)
